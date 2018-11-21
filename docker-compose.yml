@@ -1,0 +1,110 @@
+version: '3.5'
+
+services:
+  telegraf:
+    image: telegraf
+    container_name: telegraf
+    command: telegraf --config /etc/telegraf/telegraf.conf --config-directory /etc/telegraf/telegraf.d
+    environment:
+      - HOST_PROC=/host/proc
+      - HOST_SYS=/host/sys
+      - HOST_ETC=/host/etc
+      - HOST_CGROUP=/host/cgroup
+      - TZ=Europe/Madrid
+    volumes:
+      - ./confs/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+      - ./confs/telegraf/telegraf.d:/etc/telegraf/telegraf.d:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /cgroup/:/host/cgroup:ro
+      - /sys:/rootfs/sys:ro
+      - /etc:/rootfs/etc
+    networks:
+      - net
+    links:
+      - influxdb
+    labels:
+      - "traefik.enable=false"
+      - "docker.group=tick"
+ 
+  influxdb:
+    image: influxdb
+    container_name: influxdb
+    restart: always
+    environment:
+      - INFLUXDB_DB=${INFLUXDB_DB}
+      - INFLUXDB_USER=${INFLUXDB_USR}
+      - INFLUXDB_USER_PASSWORD=${INFLUXDB_PASS}
+      - TZ=Europe/Madrid
+    volumes:
+      - influxdb:/var/lib/influxdb:Z
+    ports:
+      - "8086:8086"
+    networks:
+      - net
+    labels:
+      - "traefik.enable=false"
+      - "docker.group=tick"
+  
+  chronograf:
+    image: chronograf
+    container_name: chronograf
+    environment:
+      - PUBLIC_URL=https://${CHRONOGRAF_URL}
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_USERNAME=${INFLUXDB_USR}
+      - INFLUXDB_PASSWORD=${INFLUXDB_PASS}
+      - KAPACITOR_URL=http://kapacitor:9092
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - TOKEN_SECRET=${TOKEN_SECRET}
+      - TZ=Europe/Madrid
+    volumes:
+      - chronograf:/var/lib/chronograf:Z
+    networks:
+      - traefik
+      - net
+    links:
+      - influxdb
+      - kapacitor
+    depends_on:
+      - kapacitor
+      - influxdb
+      - telegraf
+    labels:
+      - "traefik.backend=TICK"
+      - "traefik.frontend.rule=Host:${CHRONOGRAF_URL}"
+      - "traefik.docker.network=traefik"
+      - "traefik.port=8888"
+      - "docker.group=tick"
+    
+  kapacitor:
+    image: kapacitor
+    container_name: kapacitor
+    environment:
+      - KAPACITOR_HOSTNAME=kapacitor
+      - KAPACITOR_INFLUXDB_0_URLS_0=http://influxdb:8086
+      - KAPACITOR_TELEGRAM_ENABLED=${KAPACITOR_TELEGRAM_ENABLED}
+      - KAPACITOR_TELEGRAM_TOKEN=${KAPACITOR_TELEGRAM_TOKEN}
+      - KAPACITOR_TELEGRAM_CHAT_ID=${KAPACITOR_TELEGRAM_CHAT_ID}
+      - TZ=Europe/Madrid
+    volumes:
+      - kapacitor:/var/lib/kapacitor:Z
+    links:
+      - influxdb
+    networks:
+      - net
+    labels:
+      - "traefik.enable=false"
+      - "docker.group=tick"
+
+volumes:
+  chronograf:
+  influxdb:
+  kapacitor:
+
+networks:
+  net:
+  traefik:
+    external:
+      name: traefik

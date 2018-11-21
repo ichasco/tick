@@ -1,0 +1,4 @@
+.env
+confs/telegraf/telegraf.conf
+confs/influxdb/influxdb.conf
+confs/telegraf/telegraf.d/ping.conf
